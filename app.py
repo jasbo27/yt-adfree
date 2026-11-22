@@ -52,14 +52,9 @@ HTML = """
 """
 
 
-def resolve(v):
-    opts = {
-        "format": "best[height<=1080]/best", "quiet": True, "no_warnings": True,
-        "remote_components": ["ejs:github"],
-        "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
-    }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        return ydl.extract_info(f"https://www.youtube.com/watch?v={v}", download=False)
+def get_title(v):
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+        return ydl.extract_info(f"https://www.youtube.com/watch?v={v}", download=False, process=False).get("title")
 
 
 @app.route("/stream")
@@ -67,11 +62,11 @@ def stream():
     url = f"https://www.youtube.com/watch?v={request.args.get('v', '')}"
     dl = subprocess.Popen(
         [sys.executable, "-m", "yt_dlp", "-q", "--no-warnings", "--remote-components", "ejs:github",
-         "--extractor-args", "youtube:player_client=web_safari", "-f", "best[height<=1080]/best",
+         "-f", "bv*[vcodec^=avc1][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b",
          "--retries", "5", "--fragment-retries", "5", "-o", "-", url],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     ff = subprocess.Popen(
-        ["ffmpeg", "-loglevel", "error", "-i", "pipe:0", "-c", "copy", "-bsf:a", "aac_adtstoasc",
+        ["ffmpeg", "-loglevel", "error", "-i", "pipe:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
          "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"],
         stdin=dl.stdout, stdout=subprocess.PIPE)
     dl.stdout.close()
@@ -94,7 +89,7 @@ def index():
 
     try:
         if v:
-            title = resolve(v).get("title")
+            title = get_title(v)
             stream_url = True
         if q:
             with yt_dlp.YoutubeDL({"extract_flat": True, "quiet": True}) as ydl:
