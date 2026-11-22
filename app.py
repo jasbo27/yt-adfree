@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from urllib.parse import quote_plus
 
 import yt_dlp
@@ -63,17 +64,24 @@ def resolve(v):
 
 @app.route("/stream")
 def stream():
-    info = resolve(request.args.get("v", ""))
-    h = "".join(f"{k}: {val}\r\n" for k, val in (info.get("http_headers") or {}).items())
-    cmd = ["ffmpeg", "-loglevel", "error", "-headers", h, "-i", info["url"], "-c", "copy",
-           "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    url = f"https://www.youtube.com/watch?v={request.args.get('v', '')}"
+    dl = subprocess.Popen(
+        [sys.executable, "-m", "yt_dlp", "-q", "--no-warnings", "--remote-components", "ejs:github",
+         "--extractor-args", "youtube:player_client=web_safari", "-f", "best[height<=1080]/best",
+         "--retries", "5", "--fragment-retries", "5", "-o", "-", url],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    ff = subprocess.Popen(
+        ["ffmpeg", "-loglevel", "error", "-i", "pipe:0", "-c", "copy", "-bsf:a", "aac_adtstoasc",
+         "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"],
+        stdin=dl.stdout, stdout=subprocess.PIPE)
+    dl.stdout.close()
 
     def gen():
         try:
-            yield from iter(lambda: p.stdout.read(64 * 1024), b"")
+            yield from iter(lambda: ff.stdout.read(64 * 1024), b"")
         finally:
-            p.kill()
+            ff.kill()
+            dl.kill()
 
     return Response(gen(), mimetype="video/mp4")
 
