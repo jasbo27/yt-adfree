@@ -1,7 +1,8 @@
+import subprocess
 from urllib.parse import quote_plus
 
 import yt_dlp
-from flask import Flask, render_template_string, request
+from flask import Flask, Response, render_template_string, request
 
 app = Flask(__name__)
 
@@ -33,7 +34,7 @@ HTML = """
 
   {% if stream_url %}
     <h3>{{ title }}</h3>
-    <video controls autoplay src="{{ stream_url }}"></video>
+    <video controls autoplay src="/stream?v={{ v }}"></video>
   {% endif %}
 
   {% if results %}
@@ -51,6 +52,34 @@ HTML = """
 
 
 @app.route("/")
+def resolve(v):
+    opts = {
+        "format": "best[height<=1080]/best", "quiet": True, "no_warnings": True,
+        "remote_components": ["ejs:github"],
+        "extractor_args": {"youtube": {"player_client": ["web_safari"]}},
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        return ydl.extract_info(f"https://www.youtube.com/watch?v={v}", download=False)
+
+
+@app.route("/stream")
+def stream():
+    info = resolve(request.args.get("v", ""))
+    h = "".join(f"{k}: {val}\r\n" for k, val in (info.get("http_headers") or {}).items())
+    cmd = ["ffmpeg", "-loglevel", "error", "-headers", h, "-i", info["url"], "-c", "copy",
+           "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+    def gen():
+        try:
+            yield from iter(lambda: p.stdout.read(64 * 1024), b"")
+        finally:
+            p.kill()
+
+    return Response(gen(), mimetype="video/mp4")
+
+
+@app.route("/")
 def index():
     q = request.args.get("q", "").strip()
     v = request.args.get("v", "").strip()
@@ -58,10 +87,8 @@ def index():
 
     try:
         if v:
-            opts = {"format": "best[ext=mp4]/best", "quiet": True, "remote_components": ["ejs:github"]}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(f"https://www.youtube.com/watch?v={v}", download=False)
-                stream_url, title = info.get("url"), info.get("title")
+            title = resolve(v).get("title")
+            stream_url = True
         if q:
             with yt_dlp.YoutubeDL({"extract_flat": True, "quiet": True}) as ydl:
                 results = ydl.extract_info(f"ytsearch10:{q}", download=False).get("entries", [])
@@ -69,7 +96,7 @@ def index():
         error = f"Błąd: {e}"
 
     return render_template_string(
-        HTML, q=q, q_enc=quote_plus(q), results=results,
+        HTML, q=q, v=v, q_enc=quote_plus(q), results=results,
         stream_url=stream_url, title=title, error=error,
     )
 

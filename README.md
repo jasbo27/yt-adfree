@@ -30,5 +30,5 @@ Python 3.9+ oraz środowisko JavaScript (`deno` lub `node`) – yt-dlp potrzebuj
 ## Uwagi
 
 - Przy problemach z odtwarzaniem zaktualizuj yt-dlp: `pip install -U yt-dlp`.
-- Linki do strumieni wygasają po pewnym czasie – wyszukaj/odtwórz ponownie.
+- Wideo jest strumieniowane przez serwer (ffmpeg), bo bezpośrednie linki googlevideo zwracają 403. Przewijanie jest ograniczone.
 - Używaj zgodnie z regulaminem YouTube i prawem w swoim kraju.
