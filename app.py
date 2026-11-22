@@ -51,7 +51,6 @@ HTML = """
 """
 
 
-@app.route("/")
 def resolve(v):
     opts = {
         "format": "best[height<=1080]/best", "quiet": True, "no_warnings": True,
